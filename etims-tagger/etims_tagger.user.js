@@ -2,7 +2,10 @@
 // @name          ETIMS Tagger
 // @namespace     http://hisdeedsaredust.com/
 // @description   Tag project codes on ETIMS for memorability
-// @version       1.0.1
+// @version       1.1.0
+// @grant         GM_getValue
+// @grant         GM_setValue
+// @require       http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js
 // @include       http://etims/*
 // @include       http://etims.rdn.thales.co.uk/*
 // ==/UserScript==
@@ -59,6 +62,43 @@ function evlTag() {
     return false;
 }
 
+function addTag( nextcell, projtag )
+{
+    // Have we tagged this already, or put in a button to allow tagging?
+    if (nextcell.firstChild.nodeName == "SPAN") {
+        // There _should_ already be a project tag, because we don't offer a way of deleting them yet
+        if (projtag)
+            nextcell.firstChild.innerHTML = projtag;
+    } else if (nextcell.firstChild.nodeName == "INPUT") {
+        // got a "tag" button, so may have to replace this with tag
+        if (projtag) {
+            // OK, this must be been tagged since we last looked, so replace INPUT with SPAN
+            var newele = document.createElement("span");
+            newele.setAttribute("class", "projtag");
+            newele.innerHTML = projtag;
+            newele.addEventListener("click", evlRetag, false);
+            nextcell.replaceChild(newele, nextcell.firstChild);
+        }
+    } else {
+        // First time through (page load). Need to space the existing description from the tag or button
+        // we're about to create.
+        nextcell.innerHTML = ' ' + nextcell.innerHTML;
+        var newele;
+        if (projtag) {
+            newele = document.createElement("span");
+            newele.setAttribute("class", "projtag");
+            newele.innerHTML = projtag;
+            newele.addEventListener("click", evlRetag, false);
+        } else  {
+            newele = document.createElement("input");
+            newele.type = "button";
+            newele.value = "tag";
+            newele.addEventListener("click", evlTag, false);
+        }
+        nextcell.insertBefore(newele, nextcell.firstChild);
+    }
+}
+
 function addTags() {
     var r = new RegExp("^todo_tsh_idx_(\\d+)$");
     var e = document.getElementsByTagName("input");
@@ -78,39 +118,7 @@ function addTags() {
                 if (firstbit) {
                     var projtag = GM_getValue(firstbit[1]);
                     var nextcell = e[i].parentNode.nextSibling;
-                    // Have we tagged this already, or put in a button to allow tagging?
-                    if (nextcell.firstChild.nodeName == "SPAN") {
-                        // There _should_ already be a project tag, because we don't offer a way of deleting them yet
-                        if (projtag)
-                            nextcell.firstChild.innerHTML = projtag;
-                    } else if (nextcell.firstChild.nodeName == "INPUT") {
-                        // got a "tag" button, so may have to replace this with tag
-                        if (projtag) {
-                            // OK, this must be been tagged since we last looked, so replace INPUT with SPAN
-                            var newele = document.createElement("span");
-                            newele.setAttribute("class", "projtag");
-                            newele.innerHTML = projtag;
-                            newele.addEventListener("click", evlRetag, false);
-                            nextcell.replaceChild(newele, nextcell.firstChild);
-                        }
-                    } else {
-                        // First time through (page load). Need to space the existing description from the tag or button
-                        // we're about to create.
-                        nextcell.innerHTML = ' ' + nextcell.innerHTML;
-                        var newele;
-                        if (projtag) {
-                            newele = document.createElement("span");
-                            newele.setAttribute("class", "projtag");
-                            newele.innerHTML = projtag;
-                            newele.addEventListener("click", evlRetag, false);
-                        } else  {
-                            newele = document.createElement("input");
-                            newele.type = "button";
-                            newele.value = "tag";
-                            newele.addEventListener("click", evlTag, false);
-                        }
-                        nextcell.insertBefore(newele, nextcell.firstChild);
-                    }
+                    addTag( nextcell, projtag );
                 }
             }
         }
@@ -227,10 +235,157 @@ function stripOldStyles() {
         e_select.parentNode.replaceChild(document.createTextNode(e_option.textContent), e_select);
     }
 }
-    
-    
-//
+
+
+// http://stackoverflow.com/questions/8281441/fire-greasemonkey-script-on-ajax-request/8283815#8283815
+/*--- waitForKeyElements():  A handy, utility function that
+    does what it says.
+*/
+function waitForKeyElements (
+    selectorTxt,    /* Required: The jQuery selector string that
+                        specifies the desired element(s).
+                    */
+    actionFunction, /* Required: The code to run when elements are
+                        found. It is passed a jNode to the matched
+                        element.
+                    */
+    bWaitOnce,      /* Required: If false, will continue to scan for
+                        new elements even after the first match is
+                        found.
+                    */
+    bNoFlag,        /* Optional: If true, will match same items
+                        again with each call.
+                    */
+    iframeSelector  /* Optional: If set, identifies the iframe to
+                        search.
+                    */
+)
+{
+    var targetNodes, btargetsFound;
+
+    if (typeof iframeSelector == "undefined")
+        targetNodes     = $(selectorTxt);
+    else
+        targetNodes     = $(iframeSelector).contents ()
+                                           .find (selectorTxt);
+
+    if (targetNodes  &&  targetNodes.length > 0) {
+        /*--- Found target node(s).  Go through each and act if they
+            are new.
+        */
+        targetNodes.each ( function () {
+            var jThis        = $(this);
+            var alreadyFound = jThis.data ('alreadyFound')  ||  false;
+
+            if (!alreadyFound) {
+                //--- Call the payload function.
+                actionFunction (jThis);
+                if (!bNoFlag)
+                    jThis.data ('alreadyFound', true);
+            }
+        } );
+        btargetsFound   = true;
+    }
+    else {
+        btargetsFound   = false;
+    }
+
+    //--- Get the timer-control variable for this selector.
+    var controlObj      = waitForKeyElements.controlObj  ||  {};
+    var controlKey      = selectorTxt.replace (/[^\w]/g, "_");
+    var timeControl     = controlObj [controlKey];
+
+    //--- Now set or clear the timer as appropriate.
+    if (btargetsFound  &&  bWaitOnce  &&  timeControl) {
+        //--- The only condition where we need to clear the timer.
+        clearInterval (timeControl);
+        delete controlObj [controlKey]
+    }
+    else if (!btargetsFound || !bWaitOnce) {
+        //--- Set a timer, if needed.
+        if ( ! timeControl) {
+            timeControl = setInterval ( function () {
+                    waitForKeyElements (    selectorTxt,
+                                            actionFunction,
+                                            bWaitOnce,
+                                            bFlag,
+                                            iframeSelector
+                                        );
+                },
+                500
+            );
+            controlObj [controlKey] = timeControl;
+        }
+    }
+    waitForKeyElements.controlObj   = controlObj;
+}
+
+
+function addAdditionalHoursTags() {
+    $("input[name^='actual_hours_']").each( function(idx) {
+        var this_td = $(this).closest("td");
+        var name_td = this_td.prev();
+        var code_td = name_td.prev();
+        if (!code_td.length)  return;
+        var code_tx = code_td.text();
+        var firstbit = code_tx.match(/^\s*(\w+)-/);
+        var projtag = GM_getValue(firstbit[1]);
+        var nextcell = name_td.get(0);
+
+        // Same as addTags()
+        addTag( nextcell, projtag );
+    });
+}
+
+
+// Fix broken off-booking dropdown
+function waitForAHOB()
+{
+    waitForKeyElements( "#_additionalHoursTab", fixAHOB, true, true );
+}
+
+// Function to patch up the broken select option once it's loaded
+function fixAHOB(jNode)
+{
+    // Look for text to be fixed
+    if (jNode.html().search('<option>-- Please Select --</option>') != -1)
+    {
+        // Fix it
+        jNode.html( jNode.html().replace('<option>-- Please Select --</option>','<option value="">-- Please Select --</option>') );
+
+        // Fix up tagged bookings
+        addAdditionalHoursTags();
+
+        // Make the submit buttons trigger the fix-up routine again
+        var submitButtons = $("input[value='Submit Additional Hours'],input[value='Resubmit Additional Hours']");
+        submitButtons.bind( "click", waitForAHOB );
+
+        // Disable Return on input fields, as the page then doesn't work!
+        inputFields = $("input[name='actual_code'],input[name^='actual_hours']");
+        inputFields.bind( "keypress", function(e) {
+            // Prepare to do a fix upon Enter
+            var k = e.keyCode || e.which;
+            return (k != 13);
+        } );
+    }
+    else
+    {
+        // Not there to fix (or already fixed?  But then see recheck in submit code just above)
+        // Create one shot timer to make it look again
+        setTimeout( waitForAHOB, 500 );
+    }
+}
+
+// Make the additional hours tab 'link' trigger the fix-up routine
+var additionalHours = $("div.additionalHoursTabHeading a");
+additionalHours.bind( "click", function() {
+    // Blow away old additional hours content so we don't confuse it with incoming new content
+    document.getElementById('_additionalHoursTab').innerHTML = "[unloaded]";
+    waitForAHOB();
+});
+
 // ChangeLog
+// 2013-09-02 fnx Additional hours tab work
 // 2012-10-03 flo Make WO Entry boxes larger. Advertise Tagger.
 // 2007-08-03 flo Remove TE05 because they aren't real errors
 // 2007-08-02 flo multiple cost codes for same project will be tagged correctly in one go
