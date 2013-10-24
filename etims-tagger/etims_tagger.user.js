@@ -384,7 +384,22 @@ additionalHours.bind( "click", function() {
     waitForAHOB();
 });
 
+
+// Fix up the over-wide normal tab
+// Cross-platform workaround is to add an interim div with the padding, keeing the parent div at 100% but with no padding
+var normalTab = $("#_normalHoursTab");
+var normalChildren = normalTab.children();
+normalTab.append("<div id='_normalHoursTabPadding'></div>");
+var insertion = $("#_normalHoursTabPadding");
+insertion.append( normalChildren );
+
+// Now fix up the padding
+normalTab.css("padding","0");
+insertion.css("padding","2px");
+
+
 // ChangeLog
+// 2013-10-24 fnx Fix width of main tab outside of IE
 // 2013-09-02 fnx Additional hours tab work
 // 2012-10-03 flo Make WO Entry boxes larger. Advertise Tagger.
 // 2007-08-03 flo Remove TE05 because they aren't real errors
